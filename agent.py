@@ -36,6 +36,25 @@ from python.helpers.extension import call_extensions
 from python.helpers.errors import RepairableException, HandledException
 
 
+
+# Common LLM-hallucinated tool names mapped to actual tool names
+TOOL_ALIASES = {
+    'code_execution': 'code_execution_tool',
+    'terminal': 'code_execution_tool',
+    'shell': 'code_execution_tool',
+    'web_search': 'search_engine',
+    'search': 'search_engine',
+    'browser_tool': 'browser_agent',
+    'browser': 'browser_agent',
+    'response_tool': 'response',
+    'message_tool': 'response',
+    'message': 'response',
+    'reply': 'response',
+    'knowledge_tool': 'memory',
+    'memory_tool': 'memory',
+    'task_manager': 'scheduler',
+}
+
 class AgentContextType(Enum):
     USER = "user"
     TASK = "task"
@@ -861,6 +880,24 @@ class Agent:
             # Reset misformat counter when valid JSON is parsed
             self.loop_data.consecutive_misformat = 0
             raw_tool_name = tool_request.get("tool_name", tool_request.get("tool",""))  # Get the raw tool name
+
+            # Fix #4: Resolve hallucinated tool names to actual names
+            raw_tool_name = TOOL_ALIASES.get(raw_tool_name, raw_tool_name)
+
+            # Fix #3: Validate tool_name is not empty before dispatching
+            if not raw_tool_name:
+                self.loop_data.consecutive_misformat += 1
+                warning_msg = self.read_prompt("fw.msg_misformat.md")
+                self.hist_add_warning(warning_msg)
+                PrintStyle(font_color="red", padding=True).print(
+                    f"Valid JSON parsed but no tool_name found. Treating as misformat. (Consecutive: {self.loop_data.consecutive_misformat})"  # noqa
+                )
+                self.context.log.log(
+                    type="warning",
+                    content=f"{self.agent_name}: Valid JSON but empty tool_name. (Consecutive: {self.loop_data.consecutive_misformat})",
+                )
+                return
+
             tool_args = tool_request.get("tool_args", tool_request.get("args", {}))
             # Ensure tool_args is always a dictionary (not a string or other type)
             if not isinstance(tool_args, dict):
