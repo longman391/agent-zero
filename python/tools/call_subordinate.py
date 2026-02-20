@@ -4,7 +4,7 @@ from initialize import initialize_agent
 from python.extensions.hist_add_tool_result import _90_save_tool_call_file as save_tool_call_file
 
 # Override subordinate model to avoid Claude's JSON formatting resistance.
-# Claude subordinates interpret Agent Zero's system prompt as "prompt injection"
+# Claude subordinates interpret Agent Zero system prompt as "prompt injection"
 # and refuse to output JSON, causing infinite misformat loops.
 # GLM-5 reliably follows JSON formatting instructions.
 SUBORDINATE_MODEL_OVERRIDES = {
@@ -13,10 +13,23 @@ SUBORDINATE_MODEL_OVERRIDES = {
     "chat_model_api_base": "http://10.0.1.10:4000/v1",
 }
 
+# Common hallucinated parameter names the LLM uses instead of "message"
+MESSAGE_ALIASES = [
+    "visual_representation", "task", "instruction", "prompt",
+    "query", "content", "text", "request", "input",
+]
+
 
 class Delegation(Tool):
 
     async def execute(self, message="", reset="", **kwargs):
+        # Resolve hallucinated parameter names to "message"
+        if not message:
+            for alias in MESSAGE_ALIASES:
+                if alias in kwargs and kwargs[alias]:
+                    message = kwargs[alias]
+                    break
+
         # create subordinate agent using the data object on this agent and set superior agent to his data object
         if (
             self.agent.get_data(Agent.DATA_NAME_SUBORDINATE) is None
