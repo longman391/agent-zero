@@ -3,6 +3,16 @@ from python.helpers.tool import Tool, Response
 from initialize import initialize_agent
 from python.extensions.hist_add_tool_result import _90_save_tool_call_file as save_tool_call_file
 
+# Override subordinate model to avoid Claude's JSON formatting resistance.
+# Claude subordinates interpret Agent Zero's system prompt as "prompt injection"
+# and refuse to output JSON, causing infinite misformat loops.
+# GLM-5 reliably follows JSON formatting instructions.
+SUBORDINATE_MODEL_OVERRIDES = {
+    "chat_model_provider": "other",
+    "chat_model_name": "glm-5",
+    "chat_model_api_base": "http://10.0.1.10:4000/v1",
+}
+
 
 class Delegation(Tool):
 
@@ -12,8 +22,8 @@ class Delegation(Tool):
             self.agent.get_data(Agent.DATA_NAME_SUBORDINATE) is None
             or str(reset).lower().strip() == "true"
         ):
-            # initialize default config
-            config = initialize_agent()
+            # initialize config with subordinate model overrides
+            config = initialize_agent(override_settings=SUBORDINATE_MODEL_OVERRIDES)
 
             # set subordinate prompt profile if provided, if not, keep original
             agent_profile = kwargs.get("profile", kwargs.get("agent_profile", ""))
