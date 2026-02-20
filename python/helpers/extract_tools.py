@@ -36,12 +36,8 @@ def extract_json_object_string(content: str) -> str:
         char = content[i]
 
         if escape_next:
-            # This character is escaped - still check if it's a quote to toggle in_string
-            # but don't treat it as a string delimiter
+            # Escaped character — skip entirely, no toggles, no brace counting
             escape_next = False
-            if char == '"':
-                # Escaped quote - toggle in_string but don't treat as string delimiter
-                in_string = not in_string
             i += 1
             continue
 
