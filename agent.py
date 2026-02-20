@@ -930,6 +930,24 @@ class Agent:
                     background_color="black", font_color="red", padding=True
                 ).print(f"Failed to get MCP tool '{tool_name}': {e}")
 
+            # Fix #5B: Try underscore-to-dot resolution for MCP tools
+            # LLMs frequently hallucinate todoist_get_tasks instead of todoist.get_tasks
+            if not tool and "_" in tool_name:
+                try:
+                    import python.helpers.mcp_handler as mcp_helper
+                    mcp_dot_name = tool_name.replace("_", ".", 1)
+                    mcp_tool_candidate = mcp_helper.MCPConfig.get_instance().get_tool(
+                        self, mcp_dot_name
+                    )
+                    if mcp_tool_candidate:
+                        tool = mcp_tool_candidate
+                        tool_name = mcp_dot_name  # Update for downstream use
+                        PrintStyle(font_color="yellow", padding=True).print(
+                            f"MCP tool resolved: {raw_tool_name} -> {mcp_dot_name}"
+                        )
+                except Exception:
+                    pass  # Fall through to local tool lookup
+
             # Fallback to local get_tool if MCP tool was not found or MCP lookup failed
             if not tool:
                 tool = self.get_tool(
