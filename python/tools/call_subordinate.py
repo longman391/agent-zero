@@ -3,15 +3,39 @@ from python.helpers.tool import Tool, Response
 from initialize import initialize_agent
 from python.extensions.hist_add_tool_result import _90_save_tool_call_file as save_tool_call_file
 
-# Override subordinate model to avoid Claude's JSON formatting resistance.
-# Claude subordinates interpret Agent Zero system prompt as "prompt injection"
-# and refuse to output JSON, causing infinite misformat loops.
-# GLM-5 reliably follows JSON formatting instructions.
+# Override subordinate model.
+# - Claude refuses JSON output (interprets system prompt as "prompt injection")
+# - GLM-5 ignores task boundaries (e.g. "investigate only" -> deletes containers)
+# Gemini 3 Flash follows JSON formatting and respects instruction constraints.
 SUBORDINATE_MODEL_OVERRIDES = {
     "chat_model_provider": "other",
-    "chat_model_name": "glm-5",
+    "chat_model_name": "gemini-3-flash-preview",
     "chat_model_api_base": "http://10.0.1.10:4000/v1",
 }
+
+# Safety preamble prepended to all subordinate messages to prevent
+# destructive actions beyond the delegated scope.
+SUBORDINATE_SAFETY_PREAMBLE = """CRITICAL CONSTRAINTS — You are a SUBORDINATE agent. You MUST obey these rules:
+1. SCOPE LIMIT: Only perform actions explicitly requested in your task. If the task says
+   "investigate", "diagnose", "check", "audit", or "report" — you ONLY gather information
+   and report findings. You do NOT fix, modify, restart, or delete anything.
+2. DESTRUCTIVE COMMAND BAN: NEVER execute destructive or state-changing commands unless
+   your task explicitly says "fix", "apply", "execute", "restart", "remove", or "deploy".
+   Banned unless explicitly authorized:
+   - docker stop/rm/run/restart, docker-compose up/down
+   - systemctl stop/start/restart, service stop/start
+   - rm -rf, mkfs, fdisk, dd
+   - kill/pkill/killall
+   - chmod/chown on system directories
+   - Any command that modifies infrastructure state
+3. PROPOSE, DON'T ACT: When you find a problem and know the fix, DESCRIBE the fix in
+   your report (including exact commands) but DO NOT execute it unless authorized.
+4. ASK WHEN UNCERTAIN: If you are unsure whether an action is within scope, STOP and
+   report back to your superior asking for explicit permission.
+
+---
+YOUR TASK:
+"""
 
 # Common hallucinated parameter names the LLM uses instead of "message"
 MESSAGE_ALIASES = [
@@ -29,6 +53,9 @@ class Delegation(Tool):
                 if alias in kwargs and kwargs[alias]:
                     message = kwargs[alias]
                     break
+
+        # Prepend safety preamble to constrain subordinate behavior
+        message = SUBORDINATE_SAFETY_PREAMBLE + message
 
         # create subordinate agent using the data object on this agent and set superior agent to his data object
         if (
