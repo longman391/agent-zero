@@ -877,8 +877,6 @@ class Agent:
         tool_request = extract_tools.json_parse_dirty(msg)
 
         if tool_request is not None:
-            # Reset misformat counter when valid JSON is parsed
-            self.loop_data.consecutive_misformat = 0
             raw_tool_name = tool_request.get("tool_name", tool_request.get("tool",""))  # Get the raw tool name
 
             # Fix #4: Resolve hallucinated tool names to actual names
@@ -896,7 +894,18 @@ class Agent:
                     type="warning",
                     content=f"{self.agent_name}: Valid JSON but empty tool_name. (Consecutive: {self.loop_data.consecutive_misformat})",
                 )
+
+                # Escalate after too many consecutive empty tool_name responses
+                if self.loop_data.consecutive_misformat >= 5:
+                    error_msg = f"Too many consecutive empty tool_name responses ({self.loop_data.consecutive_misformat}). Breaking loop to prevent infinite iteration."
+                    self.hist_add_warning(error_msg)
+                    PrintStyle(font_color="red", padding=True).print(error_msg)
+                    self.context.log.log(type="error", content=error_msg)
+                    raise HandledException("Agent producing consistently empty tool_name in JSON responses")
                 return
+
+            # Reset misformat counter only when we have a valid tool_name
+            self.loop_data.consecutive_misformat = 0
 
             tool_args = tool_request.get("tool_args", tool_request.get("args", {}))
             # Ensure tool_args is always a dictionary (not a string or other type)
